@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         STACK_NAME = "my_stack"
-        COMPOSE_FILE = "docker-compose.yml"
+        COMPOSE_FILE = "docker-compose.yaml"
     }
 
     stages {
