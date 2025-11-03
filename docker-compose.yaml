@@ -4,11 +4,11 @@ services:
     image: ivashka3228/crudback100
     restart: always
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - db
       - phpmyadmin
-  dbb:
+  db:
     image: ivashka3228/mysql100
     restart: always
     environment:
