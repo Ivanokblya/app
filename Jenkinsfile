@@ -23,17 +23,7 @@ pipeline {
                 }
             }
         }
-    }
-
-    post {
-        success {
-            echo 'Deployment completed successfully!'
-        }
-        failure {
-            echo 'Deployment failed!'
-        }
-    }
-    stage('Check DB columns') {
+         stage('Check DB columns') {
     steps {
         script {
             def mysqlHost = "localhost"
@@ -64,4 +54,15 @@ pipeline {
     }
 }
 
+    }
+
+    post {
+        success {
+            echo 'Deployment completed successfully!'
+        }
+        failure {
+            echo 'Deployment failed!'
+        }
+    }
+   
 }
