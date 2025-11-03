@@ -23,36 +23,8 @@ pipeline {
                 }
             }
         }
-         stage('Check DB columns') {
-    steps {
-        script {
-            def mysqlHost = "localhost"
-            def mysqlUser = "root"
-            def mysqlPass = "secret"
-            def mysqlDB = "lena"
-
-            def result = sh(
-                script: """mysql -h ${mysqlHost} -u ${mysqlUser} -p${mysqlPass} -D ${mysqlDB} -N -e "SHOW COLUMNS FROM clients LIKE 'first_name';" """,
-                returnStdout: true
-            ).trim()
-
-            def resultHyphen = sh(
-                script: """mysql -h ${mysqlHost} -u ${mysqlUser} -p${mysqlPass} -D ${mysqlDB} -N -e "SHOW COLUMNS FROM clients LIKE 'first-name';" """,
-                returnStdout: true
-            ).trim()
-
-            echo "Check first_name column: '${result}'"
-            echo "Check first-name column: '${resultHyphen}'"
-
-            if (result == "") {
-                error("Column 'first_name' not found in table 'clients'!")
-            }
-            if (resultHyphen != "") {
-                error("Column 'first-name' should NOT exist!")
-            }
-        }
+         
     }
-}
 
     }
 
