@@ -1,0 +1,36 @@
+version: "3.3"
+services:
+  web-server:
+    image: ivashka3228/crudback100
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - db
+      - phpmyadmin
+  db:
+    image: ivashka3228/mysql100
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 'secret'
+      MYSQL_DATABASE: 'lena'
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:5.0.1
+    restart: always
+    environment:
+      PMA_HOST: 'db'
+      PMA_USER: 'root'
+      PMA_PASSWORD: 'secret'
+    ports:
+      - "5000:80"
+volumes:
+  mysql-data:
