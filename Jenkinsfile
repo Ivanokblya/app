@@ -22,9 +22,8 @@ pipeline {
                 script {
                     echo "Проверка наличия столбца first_name в таблице clients..."
 
-                    // Проверяем имя столбца в таблице
                     def columnName = sh(
-                        script: """mysql -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} -D ${DB_NAME} --ssl-mode=DISABLED -N -e "SHOW COLUMNS FROM clients LIKE 'first%';" | awk '{print \$1}'""",
+                        script: """mysql --ssl-mode=DISABLED -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} -D ${DB_NAME} -N -e "SHOW COLUMNS FROM clients LIKE 'first%';" | awk '{print \$1}'""",
                         returnStdout: true
                     ).trim()
 
