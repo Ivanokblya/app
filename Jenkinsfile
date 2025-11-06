@@ -7,7 +7,7 @@ pipeline {
         DB_NAME = "lena"
         DB_USER = "myuser"
         DB_PASS = "mypassword"
-        DB_HOST = "db"
+        DB_HOST = "localhost"
     }
 
     stages {
