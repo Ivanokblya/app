@@ -15,10 +15,16 @@ pipeline {
 
         stage('Deploy to Swarm') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
                     sh """
-                    docker login -u $DOCKER_USER -p $DOCKER_PASS
-                    docker stack deploy -c ${COMPOSE_FILE} ${STACK_NAME}
+                        docker login -u $DOCKER_USER -p $DOCKER_PASS
+                        docker stack deploy -c ${COMPOSE_FILE} ${STACK_NAME}
                     """
                 }
             }
@@ -33,3 +39,4 @@ pipeline {
             echo 'Deployment failed!'
         }
     }
+}
