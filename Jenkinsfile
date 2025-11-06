@@ -4,12 +4,38 @@ pipeline {
     environment {
         STACK_NAME = "my_stack"
         COMPOSE_FILE = "docker-compose.yaml"
+        DB_NAME = "lena"
+        DB_USER = "myuser"
+        DB_PASS = "mypassword"
+        DB_HOST = "db"
     }
 
     stages {
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/Ivanokblya/app'
+            }
+        }
+
+        stage('Check Database Structure') {
+            steps {
+                script {
+                    echo "Проверка наличия столбца first_name в таблице clients..."
+
+                    // Проверяем имя столбца в таблице
+                    def columnName = sh(
+                        script: """mysql -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} -D ${DB_NAME} -N -e "SHOW COLUMNS FROM clients LIKE 'first%';" | awk '{print \$1}'""",
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Обнаружено имя столбца: '${columnName}'"
+
+                    if (columnName == "first_name") {
+                        echo "Структура таблицы корректна. Продолжаем деплой."
+                    } else {
+                        error("Ошибка: неверное имя столбца ('${columnName}'). Ожидалось 'first_name'. Деплой остановлен.")
+                    }
+                }
             }
         }
 
