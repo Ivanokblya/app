@@ -23,9 +23,6 @@ pipeline {
                 }
             }
         }
-         
-    }
-
     }
 
     post {
@@ -36,5 +33,3 @@ pipeline {
             echo 'Deployment failed!'
         }
     }
-   
-}
