@@ -16,6 +16,13 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/Ivanokblya/app'
             }
         }
+stage('Load Database from Git') {
+    steps {
+        sh """
+            docker exec -i $(docker ps -qf "name=db") mysql -u root -psecret lena < db/lena_dump.sql
+        """
+    }
+}
 
         stage('Check Database Structure') {
             steps {
