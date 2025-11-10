@@ -19,7 +19,7 @@ pipeline {
 stage('Load Database from Git') {
     steps {
         sh """
-            docker exec -i \$(docker ps -qf "name=db") mysql -u root -psecret lena < db/lena_dump.sql
+            docker exec -i \$(docker ps -qf "name=db") mysql -u root -psecret lena < lena_dump.sql
         """
     }
 }
