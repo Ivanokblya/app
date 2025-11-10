@@ -7,22 +7,53 @@ pipeline {
         DB_NAME = "lena"
         DB_USER = "myuser"
         DB_PASS = "mypassword"
-        DB_HOST = "192.168.0.2"
+        DB_ROOT_PASS = "secret"
+        DB_CONTAINER = "db"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/Ivanokblya/app'
             }
         }
-stage('Load Database from Git') {
-    steps {
-        sh """
-            docker exec -i \$(docker ps -qf "name=db") mysql -u root -psecret lena < lena_dump.sql
-        """
-    }
-}
+
+        stage('Deploy Docker Stack') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    sh """
+                        echo "Deploying stack..."
+                        docker login -u $DOCKER_USER -p $DOCKER_PASS
+                        docker stack deploy -c ${COMPOSE_FILE} ${STACK_NAME}
+                        echo "Waiting for MySQL to start..."
+                        sleep 20
+                    """
+                }
+            }
+        }
+
+        stage('Load Database from Git') {
+            steps {
+                script {
+                    echo "Импорт дампа базы данных из lena_dump.sql..."
+                    sh """
+                        DB_CONTAINER_ID=\$(docker ps -qf "name=${DB_CONTAINER}")
+                        if [ -z "\$DB_CONTAINER_ID" ]; then
+                            echo "Контейнер базы данных не найден!"
+                            exit 1
+                        fi
+                        cat lena_dump.sql | docker exec -i \$DB_CONTAINER_ID mysql -u root -p${DB_ROOT_PASS} ${DB_NAME}
+                    """
+                }
+            }
+        }
 
         stage('Check Database Structure') {
             steps {
@@ -30,7 +61,10 @@ stage('Load Database from Git') {
                     echo "Проверка наличия столбца first_name в таблице clients..."
 
                     def columnName = sh(
-                        script: """mysql --skip-ssl -h ${DB_HOST} -u ${DB_USER} -p${DB_PASS} -D ${DB_NAME} -N -e "SHOW COLUMNS FROM clients LIKE 'first%';" | awk '{print \$1}'""",
+                        script: """
+                            docker exec ${DB_CONTAINER} \
+                            mysql -u root -p${DB_ROOT_PASS} -D ${DB_NAME} --skip-ssl -N -e "SHOW COLUMNS FROM clients LIKE 'first%';" | awk '{print \$1}'
+                        """,
                         returnStdout: true
                     ).trim()
 
@@ -45,28 +79,14 @@ stage('Load Database from Git') {
             }
         }
 
-        stage('Deploy to Swarm') {
+        stage('Post-Deploy Info') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-credentials',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    sh """
-                        docker login -u $DOCKER_USER -p $DOCKER_PASS
-                        docker stack deploy -c ${COMPOSE_FILE} ${STACK_NAME}
-                    """
-                }
+                echo 'Deployment completed successfully!'
             }
         }
     }
 
     post {
-        success {
-            echo 'Deployment completed successfully!'
-        }
         failure {
             echo 'Deployment failed!'
         }
