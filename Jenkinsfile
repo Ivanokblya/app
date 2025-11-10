@@ -56,28 +56,37 @@ pipeline {
         }
 
         stage('Check Database Structure') {
-            steps {
-                script {
-                    echo "Проверка наличия столбца first_name в таблице clients..."
+    steps {
+        script {
+            echo "Проверка наличия столбца first_name в таблице clients..."
 
-                    def columnName = sh(
-                        script: """
-                            docker exec ${DB_CONTAINER} \
-                            mysql -u root -p${DB_ROOT_PASS} -D ${DB_NAME} --skip-ssl -N -e "SHOW COLUMNS FROM clients LIKE 'first%';" | awk '{print \$1}'
-                        """,
-                        returnStdout: true
-                    ).trim()
+            // Находим ID контейнера базы данных по имени сервиса
+            def dbContainer = sh(
+                script: "docker ps -qf 'name=my_stack_db'",
+                returnStdout: true
+            ).trim()
 
-                    echo "Обнаружено имя столбца: '${columnName}'"
+            if (!dbContainer) {
+                error("Не найден контейнер базы данных (my_stack_db). Проверь деплой.")
+            }
 
-                    if (columnName == "first_name") {
-                        echo "Структура таблицы корректна. Продолжаем деплой."
-                    } else {
-                        error("Ошибка: неверное имя столбца ('${columnName}'). Ожидалось 'first_name'. Деплой остановлен.")
-                    }
-                }
+            // Проверяем имя столбца в таблице
+            def columnName = sh(
+                script: """docker exec ${dbContainer} mysql -u root -psecret -D lena -N -e "SHOW COLUMNS FROM clients LIKE 'first%';" | awk '{print \$1}'""",
+                returnStdout: true
+            ).trim()
+
+            echo "Обнаружено имя столбца: '${columnName}'"
+
+            if (columnName == "first_name") {
+                echo "Структура таблицы корректна. Продолжаем деплой."
+            } else {
+                error("Ошибка: неверное имя столбца ('${columnName}'). Ожидалось 'first_name'. Деплой остановлен.")
             }
         }
+    }
+}
+
 
         stage('Post-Deploy Info') {
             steps {
