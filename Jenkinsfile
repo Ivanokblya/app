@@ -30,6 +30,7 @@ pipeline {
     }
 
     stages {
+
         stage('Check Kubernetes') {
             steps {
                 container('tools') {
@@ -47,48 +48,19 @@ pipeline {
                         def mysqlAddress = "mysql-master.default.svc.cluster.local"
                         echo "Попытка подключения к: ${mysqlAddress}:3306"
 
-                        // Проверяем DNS резолв
                         def dnsStatus = sh(script: "nslookup ${mysqlAddress}", returnStatus: true)
-                        if (dnsStatus != 0) {
-                            echo "DNS резолв неуспешен для ${mysqlAddress}"
-                            error("База данных недоступна - DNS ошибка! Деплой остановлен.")
-                        }
+                        if (dnsStatus != 0) error("DNS ошибка — база недоступна!")
 
-                        // Проверяем существование endpoint'а
                         def endpointCheck = sh(script: "kubectl get endpoints mysql-master -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null", returnStdout: true).trim()
-                        if (endpointCheck == "") {
-                            echo "Endpoint mysql-master не имеет активных адресов"
-                            sh 'kubectl get endpoints mysql-master -n default -o wide'
-                            error("База данных недоступна - нет активных endpoint'ов! Деплой остановлен.")
-                        }
+                        if (endpointCheck == "") error("Нет endpoints — база недоступна!")
 
-                        // Проверяем статус подов базы данных
                         def podStatus = sh(script: "kubectl get pods -l app=mysql-master -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
-                        if (podStatus != "Running") {
-                            echo "Pod базы данных не в статусе Running: ${podStatus}"
-                            sh 'kubectl get pods -A -l app=mysql-master -o wide'
-                            error("База данных недоступна - pod не запущен! Деплой остановлен.")
-                        }
+                        if (podStatus != 'Running') error("Pod базы не Running!")
 
-                        // Альтернативная проверка соединения через telnet (более надежно)
                         def dbStatus = sh(script: "timeout 10 sh -c 'echo > /dev/tcp/${mysqlAddress}/3306' 2>/dev/null", returnStatus: true)
+                        if (dbStatus != 0) error("База недоступна по TCP!")
 
-                        if (dbStatus == 0) {
-                            echo "База данных доступна (${endpointCheck}:3306)"
-                        } else {
-                            // Дополнительная проверка через kubectl port-forward
-                            echo "Прямое соединение неуспешно, проверяем через kubectl..."
-                            def kubectlTest = sh(script: "kubectl exec -n default deployment/mysql-master -- mysql -u root -psecret -e 'SELECT 1' 2>/dev/null", returnStatus: true)
-
-                            if (kubectlTest == 0) {
-                                echo "База данных доступна через kubectl exec"
-                            } else {
-                                echo "База данных недоступна через kubectl exec"
-                                sh 'kubectl get pods -A -l app=mysql-master -o wide'
-                                sh 'kubectl describe pods -l app=mysql-master -n default'
-                                error("База данных недоступна! Деплой остановлен.")
-                            }
-                        }
+                        echo "База данных доступна: ${endpointCheck}:3306"
                     }
                 }
             }
@@ -100,51 +72,23 @@ pipeline {
                     script {
                         echo "Проверка доступности фронтенда..."
 
-                        // Сначала проверяем, что сервис существует
-                        def serviceCheck = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.spec.clusterIP}' 2>/dev/null", returnStdout: true).trim()
-                        if (serviceCheck == "") {
-                            echo "Сервис crudback-service не найден"
-                            error("Фронтенд сервис недоступен! Деплой остановлен.")
-                        }
+                        def serviceCheck = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.spec.clusterIP}'", returnStdout: true).trim()
+                        if (serviceCheck == "") error("Сервис crudback-service не найден!")
 
-                        // Проверяем External IP сервиса LoadBalancer
-                        def externalIP = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null", returnStdout: true).trim()
-                        if (externalIP == "") {
-                            echo "External IP еще не назначен LoadBalancer'у, ждем..."
-                            sleep(time: 30, unit: "SECONDS")
-                            externalIP = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null", returnStdout: true).trim()
-                        }
+                        def externalIP = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
 
-                        if (externalIP != "") {
-                            echo "LoadBalancer External IP: ${externalIP}"
-                            def frontendStatus = sh(script: "curl -sSf http://${externalIP}:80 -m 10 -o /dev/null -w 'HTTP Code: %{http_code}'", returnStatus: true)
-
-                            if (frontendStatus == 0) {
-                                echo "Фронтенд доступен по External IP"
-                            } else {
-                                echo "Фронтенд недоступен по External IP. Код ошибки: ${frontendStatus}"
-                                // Проверяем поды приложения
-                                sh 'kubectl get pods -n default -l app=crudback -o wide'
-                                sh 'kubectl describe service crudback-service -n default'
-                                error("Фронтенд недоступен! Деплой остановлен.")
-                            }
+                        if (externalIP) {
+                            echo "External IP: ${externalIP}"
+                            def frontendStatus = sh(script: "curl -sSf http://${externalIP}:80 -m 10 -o /dev/null", returnStatus: true)
+                            if (frontendStatus != 0) error("Фронтенд недоступен по External IP")
                         } else {
-                            echo "External IP не назначен, проверяем через ClusterIP..."
-                            def clusterIP = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.spec.clusterIP}'", returnStdout: true).trim()
-                            def clusterPort = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
-
-                            // Тестируем через ClusterIP изнутри кластера
-                            def internalTest = sh(script: "curl -sSf http://${clusterIP}:${clusterPort}/health -m 10 2>/dev/null || curl -sSf http://${clusterIP}:${clusterPort} -m 10 -o /dev/null", returnStatus: true)
-
-                            if (internalTest == 0) {
-                                echo "Фронтенд доступен через ClusterIP (${clusterIP}:${clusterPort})"
-                            } else {
-                                echo "Фронтенд недоступен через ClusterIP"
-                                sh 'kubectl get pods -n default -l app=crudback -o wide'
-                                sh 'kubectl describe service crudback-service -n default'
-                                error("Фронтенд недоступен! Деплой остановлен.")
-                            }
+                            echo "External IP нет — проверяем через ClusterIP"
+                            def port = sh(script: "kubectl get svc crudback-service -n default -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
+                            def internal = sh(script: "curl -sSf http://${serviceCheck}:${port} -m 10 -o /dev/null", returnStatus: true)
+                            if (internal != 0) error("Фронтенд недоступен через ClusterIP")
                         }
+
+                        echo "Фронтенд доступен"
                     }
                 }
             }
@@ -153,35 +97,22 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 container('tools') {
-                    echo "Деплой приложения..."
-
-                    // Деплой в namespace - default
-                    sh 'kubectl set image deployment/crudback-app crudback=snezhana02/crudback -n default'
-
-                    // Проверка результата деплоя
-                    echo "Проверяем статус деплоя..."
-                    sh 'kubectl rollout status deployment/crudback-app -n default --timeout=120s'
-                    sh 'kubectl get deployments -n default'
-
-                    // Проверяем, что поды действительно запущены
                     script {
-                        // Получаем правильный selector из deployment
-                        def deploymentSelector = sh(script: 'kubectl get deployment crudback-app -n default -o jsonpath="{.spec.selector.matchLabels}" | grep -o \'"app":"[^"]*"\' | cut -d\'"\' -f4', returnStdout: true).trim()
-                        echo "Deployment selector: app=${deploymentSelector}"
+                        echo "Деплой приложения..."
 
-                        def podCount = sh(script: "kubectl get pods -n default -l app=${deploymentSelector} --no-headers | wc -l", returnStdout: true).trim()
-                        echo "Количество подов приложения: ${podCount}"
+                        // --- ЗАМЕНЁН ОБРАЗ ---
+                        sh 'kubectl set image deployment/crudback-app crudback=ivashka3228/crudback -n default'
 
-                        if (podCount.toInteger() == 0) {
-                            echo "Поды приложения не найдены!"
-                            sh 'kubectl get pods -n default'
-                            echo "Проверяем все поды приложения без фильтра:"
-                            sh 'kubectl get pods -n default | grep crudback || echo "Нет подов с именем crudback"'
-                            error("Деплой неуспешен - поды приложения не запущены!")
-                        } else {
-                            echo "Найдено ${podCount} подов приложения"
-                            sh "kubectl get pods -n default -l app=${deploymentSelector} -o wide"
-                        }
+                        sh 'kubectl rollout status deployment/crudback-app -n default --timeout=120s'
+
+                        def selector = sh(script: 'kubectl get deployment crudback-app -n default -o jsonpath="{.spec.selector.matchLabels.app}"', returnStdout: true).trim()
+                        echo "Selector: ${selector}"
+
+                        def podCount = sh(script: "kubectl get pods -n default -l app=${selector} --no-headers | wc -l", returnStdout: true).trim()
+                        if (podCount.toInteger() == 0) error("Поды не запущены!")
+
+                        echo "Поды найдены: ${podCount}"
+                        sh "kubectl get pods -n default -l app=${selector} -o wide"
                     }
                 }
             }
@@ -191,25 +122,29 @@ pipeline {
             steps {
                 container('tools') {
                     script {
-                        echo "Финальная проверка работоспособности..."
+                        echo "Финальная проверка..."
 
-                        // Получаем правильный selector из deployment
-                        def deploymentSelector = sh(script: 'kubectl get deployment crudback-app -n default -o jsonpath="{.spec.selector.matchLabels}" | grep -o \'"app":"[^"]*"\' | cut -d\'"\' -f4', returnStdout: true).trim()
+                        def selector = sh(script: 'kubectl get deployment crudback-app -n default -o jsonpath="{.spec.selector.matchLabels.app}"', returnStdout: true).trim()
 
-                        // Проверяем статус подов
-                        def readyPods = sh(script: "kubectl get pods -n default -l app=${deploymentSelector} -o jsonpath='{.items[*].status.containerStatuses[*].ready}' | grep -o true | wc -l", returnStdout: true).trim()
-                        def totalPods = sh(script: "kubectl get pods -n default -l app=${deploymentSelector} --no-headers | wc -l", returnStdout: true).trim()
+                        def ready = sh(script: "kubectl get pods -n default -l app=${selector} -o jsonpath='{.items[*].status.containerStatuses[*].ready}' | grep -o true | wc -l", returnStdout: true).trim()
+                        def total = sh(script: "kubectl get pods -n default -l app=${selector} --no-headers | wc -l", returnStdout: true).trim()
 
-                        echo "Готовых подов: ${readyPods}/${totalPods}"
+                        echo "Готовность: ${ready}/${total}"
 
-                        if (readyPods.toInteger() != totalPods.toInteger() || totalPods.toInteger() == 0) {
-                            echo "Не все поды готовы к работе!"
-                            sh "kubectl describe pods -n default -l app=${deploymentSelector}"
-                            error("Деплой неуспешен - не все поды готовы!")
-                        } else {
-                            echo "Все поды готовы к работе"
-                        }
+                        if (ready != total) error("Не все поды готовы!")
+
+                        echo "Все поды готовы к работе"
                     }
+                }
+            }
+        }
+
+        stage('Diagnostics (before pod deletion)') {
+            steps {
+                container('tools') {
+                    echo "Сбор диагностики..."
+                    sh 'kubectl get all -n default || true'
+                    sh 'kubectl get events -n default --sort-by=".lastTimestamp" | tail -10 || true'
                 }
             }
         }
@@ -218,25 +153,12 @@ pipeline {
     post {
         always {
             echo "Пайплайн завершён"
-            container('tools') {
-                // Собираем диагностическую информацию
-                echo "=== ДИАГНОСТИЧЕСКАЯ ИНФОРМАЦИЯ ==="
-                sh 'kubectl get all -n default || true'
-                sh 'kubectl get events -n default --sort-by=".lastTimestamp" | tail -10 || true'
-            }
         }
         success {
-            echo "Деплой успешно завершен!"
+            echo "Деплой успешно завершён!"
         }
         failure {
             echo "Деплой завершился с ошибками"
-            container('tools') {
-                // Дополнительная диагностика при ошибке
-                echo "=== ДИАГНОСТИКА ОШИБОК ==="
-                sh 'kubectl get pods -n default -o wide || true'
-                sh 'kubectl describe deployment crudback-app -n default || true'
-                sh 'kubectl logs -l app=crudback -n default --tail=50 || true'
-            }
         }
         unstable {
             echo "Деплой завершился с предупреждениями"
