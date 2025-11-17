@@ -7,7 +7,7 @@ pipeline {
                 spec:
                   containers:
                   - name: tools
-                    image: bitnami/kubectl:latest
+                    image: lachlanevenson/k8s-kubectl:latest
                     command: ['cat']
                     tty: true
                     resources:
@@ -34,8 +34,8 @@ pipeline {
         stage('Check Kubernetes') {
             steps {
                 container('tools') {
-                    sh 'kubectl get nodes'
-                    sh 'kubectl get namespaces'
+                    sh '/bin/bash -c "kubectl get nodes"'
+                    sh '/bin/bash -c "kubectl get namespaces"'
                 }
             }
         }
@@ -48,20 +48,16 @@ pipeline {
                         def dbService = "db.default.svc.cluster.local"
                         echo "Попытка подключения к: ${dbService}:3306"
 
-                        // Проверяем DNS
-                        def dnsStatus = sh(script: "nslookup ${dbService}", returnStatus: true)
+                        def dnsStatus = sh(script: "/bin/bash -c 'nslookup ${dbService}'", returnStatus: true)
                         if (dnsStatus != 0) error("DNS ошибка — база недоступна!")
 
-                        // Проверяем, что endpoints для сервиса db есть
-                        def endpointCheck = sh(script: "kubectl get endpoints db -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null", returnStdout: true).trim()
+                        def endpointCheck = sh(script: "/bin/bash -c \"kubectl get endpoints db -n default -o jsonpath='{.subsets[0].addresses[0].ip}'\"", returnStdout: true).trim()
                         if (endpointCheck == "") error("Нет endpoints — база недоступна!")
 
-                        // Проверяем, что под mysql запущен и готов
-                        def podStatus = sh(script: "kubectl get pods -l app=mysql -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
+                        def podStatus = sh(script: "/bin/bash -c \"kubectl get pods -l app=mysql -n default -o jsonpath='{.items[0].status.phase}'\"", returnStdout: true).trim()
                         if (podStatus != 'Running') error("Pod базы не Running!")
 
-                        // Проверяем доступность порта 3306 по TCP через nc
-                        def dbStatus = sh(script: "nc -z -w 10 ${dbService} 3306", returnStatus: true)
+                        def dbStatus = sh(script: "/bin/bash -c 'nc -z -w 10 ${dbService} 3306'", returnStatus: true)
                         if (dbStatus != 0) error("База недоступна по TCP!")
 
                         echo "База данных доступна по адресу: ${endpointCheck}:3306"
@@ -76,19 +72,19 @@ pipeline {
                     script {
                         echo "Проверка доступности фронтенда..."
 
-                        def serviceIP = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.spec.clusterIP}'", returnStdout: true).trim()
+                        def serviceIP = sh(script: "/bin/bash -c \"kubectl get service crudback-service -n default -o jsonpath='{.spec.clusterIP}'\"", returnStdout: true).trim()
                         if (serviceIP == "") error("Сервис crudback-service не найден!")
 
-                        def externalIP = sh(script: "kubectl get service crudback-service -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+                        def externalIP = sh(script: "/bin/bash -c \"kubectl get service crudback-service -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}'\"", returnStdout: true).trim()
 
                         if (externalIP) {
                             echo "External IP: ${externalIP}"
-                            def frontendStatus = sh(script: "curl -sSf http://${externalIP}:80 -m 10 -o /dev/null", returnStatus: true)
+                            def frontendStatus = sh(script: "/bin/bash -c 'curl -sSf http://${externalIP}:80 -m 10 -o /dev/null'", returnStatus: true)
                             if (frontendStatus != 0) error("Фронтенд недоступен по External IP")
                         } else {
                             echo "External IP отсутствует — проверяем через ClusterIP"
-                            def port = sh(script: "kubectl get svc crudback-service -n default -o jsonpath='{.spec.ports[0].port}'", returnStdout: true).trim()
-                            def internal = sh(script: "curl -sSf http://${serviceIP}:${port} -m 10 -o /dev/null", returnStatus: true)
+                            def port = sh(script: "/bin/bash -c \"kubectl get svc crudback-service -n default -o jsonpath='{.spec.ports[0].port}'\"", returnStdout: true).trim()
+                            def internal = sh(script: "/bin/bash -c 'curl -sSf http://${serviceIP}:${port} -m 10 -o /dev/null'", returnStatus: true)
                             if (internal != 0) error("Фронтенд недоступен через ClusterIP")
                         }
 
@@ -104,17 +100,17 @@ pipeline {
                     script {
                         echo "Деплой приложения..."
 
-                        sh 'kubectl set image deployment/crudback-app crudback=ivashka3228/crudback -n default'
-                        sh 'kubectl rollout status deployment/crudback-app -n default --timeout=120s'
+                        sh '/bin/bash -c "kubectl set image deployment/crudback-app crudback=ivashka3228/crudback -n default"'
+                        sh '/bin/bash -c "kubectl rollout status deployment/crudback-app -n default --timeout=120s"'
 
-                        def selector = sh(script: 'kubectl get deployment crudback-app -n default -o jsonpath="{.spec.selector.matchLabels.app}"', returnStdout: true).trim()
+                        def selector = sh(script: "/bin/bash -c 'kubectl get deployment crudback-app -n default -o jsonpath=\"{.spec.selector.matchLabels.app}\"'", returnStdout: true).trim()
                         echo "Selector: ${selector}"
 
-                        def podCount = sh(script: "kubectl get pods -n default -l app=${selector} --no-headers | wc -l", returnStdout: true).trim()
+                        def podCount = sh(script: "/bin/bash -c \"kubectl get pods -n default -l app=${selector} --no-headers | wc -l\"", returnStdout: true).trim()
                         if (podCount.toInteger() == 0) error("Поды не запущены!")
 
                         echo "Поды найдены: ${podCount}"
-                        sh "kubectl get pods -n default -l app=${selector} -o wide"
+                        sh "/bin/bash -c \"kubectl get pods -n default -l app=${selector} -o wide\""
                     }
                 }
             }
@@ -126,9 +122,9 @@ pipeline {
                     script {
                         echo "Финальная проверка..."
 
-                        def selector = sh(script: 'kubectl get deployment crudback-app -n default -o jsonpath="{.spec.selector.matchLabels.app}"', returnStdout: true).trim()
-                        def readyCount = sh(script: "kubectl get pods -n default -l app=${selector} -o jsonpath='{.items[*].status.containerStatuses[*].ready}' | grep -o true | wc -l", returnStdout: true).trim()
-                        def totalCount = sh(script: "kubectl get pods -n default -l app=${selector} --no-headers | wc -l", returnStdout: true).trim()
+                        def selector = sh(script: "/bin/bash -c 'kubectl get deployment crudback-app -n default -o jsonpath=\"{.spec.selector.matchLabels.app}\"'", returnStdout: true).trim()
+                        def readyCount = sh(script: "/bin/bash -c \"kubectl get pods -n default -l app=${selector} -o jsonpath='{.items[*].status.containerStatuses[*].ready}' | grep -o true | wc -l\"", returnStdout: true).trim()
+                        def totalCount = sh(script: "/bin/bash -c \"kubectl get pods -n default -l app=${selector} --no-headers | wc -l\"", returnStdout: true).trim()
 
                         echo "Готовность: ${readyCount}/${totalCount}"
 
@@ -144,8 +140,8 @@ pipeline {
             steps {
                 container('tools') {
                     echo "Сбор диагностики..."
-                    sh 'kubectl get all -n default || true'
-                    sh 'kubectl get events -n default --sort-by=".lastTimestamp" | tail -10 || true'
+                    sh '/bin/bash -c "kubectl get all -n default || true"'
+                    sh '/bin/bash -c "kubectl get events -n default --sort-by=.lastTimestamp | tail -10 || true"'
                 }
             }
         }
