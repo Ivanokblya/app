@@ -121,6 +121,35 @@ pipeline {
                 }
             }
         }
+        stage('Validate Order Dates') {
+    steps {
+        container('tools') {
+            script {
+                echo "Проверка корректности дат в таблице orders..."
+
+                def mysqlCmd = """
+                    mysql -h db.default.svc.cluster.local -u user -p'password' lena -e "
+                    SELECT COUNT(*) FROM orders WHERE order_date > NOW()
+                    OR order_date < '2000-01-01'
+                    OR order_date IS NULL
+                    OR order_date = '0000-00-00 00:00:00';"
+                """
+
+                def result = sh(script: mysqlCmd, returnStdout: true).trim()
+                // Парсим вывод (например, после заголовка COUNT(*))
+                def lines = result.split('\\n')
+                def count = lines.length > 1 ? lines[1].trim().toInteger() : 0
+
+                if (count > 0) {
+                    error("Найдены некорректные даты в orders: ${count} записей")
+                } else {
+                    echo "Все даты корректны"
+                }
+            }
+        }
+    }
+}
+
 
         stage('Final Health Check') {
             steps {
