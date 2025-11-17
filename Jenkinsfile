@@ -1,29 +1,31 @@
 pipeline {
     agent {
-        kubernetes {
-            yaml '''
-                apiVersion: v1
-                kind: Pod
-                spec:
-                  containers:
-                  - name: tools
-                    image: alpine/k8s:1.27.4
-                    command: ['cat']
-                    tty: true
-                    resources:
-                      requests:
-                        cpu: "100m"
-                        memory: "128Mi"
-                  - name: jnlp
-                    image: jenkins/inbound-agent:latest
-                    args: ['$(JENKINS_SECRET)', '$(JENKINS_NAME)']
-                    resources:
-                      requests:
-                        cpu: "50m"
-                        memory: "256Mi"
-            '''
-        }
+    kubernetes {
+        yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: tools
+    image: mysql:8.0
+    command:
+    - cat
+    tty: true
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+  - name: jnlp
+    image: jenkins/inbound-agent:latest
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "256Mi"
+"""
     }
+}
+
 
     environment {
         KUBECONFIG = credentials('kubeconfig-secret-id')
