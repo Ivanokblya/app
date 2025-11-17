@@ -1,12 +1,21 @@
 pipeline {
     agent {
-    kubernetes {
-        yaml """
+        kubernetes {
+            yaml """
 apiVersion: v1
 kind: Pod
 spec:
   containers:
   - name: tools
+    image: alpine/k8s:1.27.4
+    command:
+    - cat
+    tty: true
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+  - name: mysql-client
     image: mysql:8.0
     command:
     - cat
@@ -23,16 +32,14 @@ spec:
         cpu: "50m"
         memory: "256Mi"
 """
+        }
     }
-}
-
 
     environment {
         KUBECONFIG = credentials('kubeconfig-secret-id')
     }
 
     stages {
-
         stage('Check Kubernetes') {
             steps {
                 container('tools') {
@@ -42,37 +49,32 @@ spec:
             }
         }
 
-       stage('Test Database Connection') {
-    steps {
-        container('tools') {
-            script {
-                echo "Проверка доступности базы данных..."
-                def dbService = "db.default.svc.cluster.local"
-                echo "Попытка подключения к: ${dbService}:3306"
+        stage('Test Database Connection') {
+            steps {
+                container('tools') {
+                    script {
+                        echo "Проверка доступности базы данных..."
+                        def dbService = "db.default.svc.cluster.local"
+                        echo "Попытка подключения к: ${dbService}:3306"
 
-                // Проверяем DNS
-                def dnsStatus = sh(script: "nslookup ${dbService}", returnStatus: true)
-                if (dnsStatus != 0) error("DNS ошибка — база недоступна!")
+                        def dnsStatus = sh(script: "nslookup ${dbService}", returnStatus: true)
+                        if (dnsStatus != 0) error("DNS ошибка — база недоступна!")
 
-                // Проверяем endpoints
-                def endpointCheck = sh(script: "kubectl get endpoints db -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null", returnStdout: true).trim()
-                if (endpointCheck == "") error("Нет endpoints — база недоступна!")
+                        def endpointCheck = sh(script: "kubectl get endpoints db -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null", returnStdout: true).trim()
+                        if (endpointCheck == "") error("Нет endpoints — база недоступна!")
 
-                // Проверяем статус пода базы
-                def podStatus = sh(script: "kubectl get pods -l app=mysql -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
-                if (podStatus != 'Running') error("Pod базы не Running!")
+                        def podStatus = sh(script: "kubectl get pods -l app=mysql -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
+                        if (podStatus != 'Running') error("Pod базы не Running!")
 
-                // Проверяем доступность порта 3306 с помощью nc
-                def checkCmd = "nc -z -w 5 ${dbService} 3306"
-                def dbStatus = sh(script: checkCmd, returnStatus: true)
-                if (dbStatus != 0) error("База недоступна по TCP! Попробуйте проверить доступность вручную в контейнере tools")
+                        def checkCmd = "nc -z -w 5 ${dbService} 3306"
+                        def dbStatus = sh(script: checkCmd, returnStatus: true)
+                        if (dbStatus != 0) error("База недоступна по TCP! Попробуйте проверить вручную в контейнере tools")
 
-                echo "База данных доступна по адресу: ${endpointCheck}:3306"
+                        echo "База данных доступна по адресу: ${endpointCheck}:3306"
+                    }
+                }
             }
         }
-    }
-}
-
 
         stage('Test Frontend') {
             steps {
@@ -123,35 +125,34 @@ spec:
                 }
             }
         }
+
         stage('Validate Order Dates') {
-    steps {
-        container('tools') {
-            script {
-                echo "Проверка корректности дат в таблице orders..."
+            steps {
+                container('mysql-client') {
+                    script {
+                        echo "Проверка корректности дат в таблице orders..."
 
-                def mysqlCmd = """
-                    mysql -h db.default.svc.cluster.local -u root -p'secret' lena -e "
-                    SELECT COUNT(*) FROM orders WHERE order_date > NOW()
-                    OR order_date < '2000-01-01'
-                    OR order_date IS NULL
-                    OR order_date = '0000-00-00 00:00:00';"
-                """
+                        def mysqlCmd = """
+                            mysql -h db.default.svc.cluster.local -u root -p'secret' lena -e "
+                            SELECT COUNT(*) FROM orders WHERE order_date > NOW()
+                            OR order_date < '2000-01-01'
+                            OR order_date IS NULL
+                            OR order_date = '0000-00-00 00:00:00';"
+                        """
 
-                def result = sh(script: mysqlCmd, returnStdout: true).trim()
-                // Парсим вывод (например, после заголовка COUNT(*))
-                def lines = result.split('\\n')
-                def count = lines.length > 1 ? lines[1].trim().toInteger() : 0
+                        def result = sh(script: mysqlCmd, returnStdout: true).trim()
+                        def lines = result.split('\\n')
+                        def count = lines.length > 1 ? lines[1].trim().toInteger() : 0
 
-                if (count > 0) {
-                    error("Найдены некорректные даты в orders: ${count} записей")
-                } else {
-                    echo "Все даты корректны"
+                        if (count > 0) {
+                            error("Найдены некорректные даты в orders: ${count} записей")
+                        } else {
+                            echo "Все даты корректны"
+                        }
+                    }
                 }
             }
         }
-    }
-}
-
 
         stage('Final Health Check') {
             steps {
