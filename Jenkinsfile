@@ -40,35 +40,37 @@ pipeline {
             }
         }
 
-        stage('Test Database Connection') {
-            steps {
-                container('tools') {
-                    script {
-                        echo "Проверка доступности базы данных..."
-                        def dbService = "db.default.svc.cluster.local"
-                        echo "Попытка подключения к: ${dbService}:3306"
+       stage('Test Database Connection') {
+    steps {
+        container('tools') {
+            script {
+                echo "Проверка доступности базы данных..."
+                def dbService = "db.default.svc.cluster.local"
+                echo "Попытка подключения к: ${dbService}:3306"
 
-                        // Проверяем DNS
-                        def dnsStatus = sh(script: "nslookup ${dbService}", returnStatus: true)
-                        if (dnsStatus != 0) error("DNS ошибка — база недоступна!")
+                // Проверяем DNS
+                def dnsStatus = sh(script: "nslookup ${dbService}", returnStatus: true)
+                if (dnsStatus != 0) error("DNS ошибка — база недоступна!")
 
-                        // Проверяем, что endpoints для сервиса db есть
-                        def endpointCheck = sh(script: "kubectl get endpoints db -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null", returnStdout: true).trim()
-                        if (endpointCheck == "") error("Нет endpoints — база недоступна!")
+                // Проверяем endpoints
+                def endpointCheck = sh(script: "kubectl get endpoints db -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null", returnStdout: true).trim()
+                if (endpointCheck == "") error("Нет endpoints — база недоступна!")
 
-                        // Проверяем, что под mysql запущен и готов
-                        def podStatus = sh(script: "kubectl get pods -l app=mysql -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
-                        if (podStatus != 'Running') error("Pod базы не Running!")
+                // Проверяем статус пода базы
+                def podStatus = sh(script: "kubectl get pods -l app=mysql -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
+                if (podStatus != 'Running') error("Pod базы не Running!")
 
-                        // Проверяем доступность порта 3306 по TCP
-                        def dbStatus = sh(script: "timeout 10 sh -c 'echo > /dev/tcp/${dbService}/3306' 2>/dev/null", returnStatus: true)
-                        if (dbStatus != 0) error("База недоступна по TCP!")
+                // Проверяем доступность порта 3306 с помощью nc
+                def checkCmd = "nc -z -w 5 ${dbService} 3306"
+                def dbStatus = sh(script: checkCmd, returnStatus: true)
+                if (dbStatus != 0) error("База недоступна по TCP! Попробуйте проверить доступность вручную в контейнере tools")
 
-                        echo "База данных доступна по адресу: ${endpointCheck}:3306"
-                    }
-                }
+                echo "База данных доступна по адресу: ${endpointCheck}:3306"
             }
         }
+    }
+}
+
 
         stage('Test Frontend') {
             steps {
