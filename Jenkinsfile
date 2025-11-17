@@ -45,7 +45,7 @@ pipeline {
                 container('tools') {
                     script {
                         echo "Проверка доступности базы данных..."
-                        def mysqlAddress = "mysql.default.svc.cluster.local"
+                        def mysqlAddress = "db.default.svc.cluster.local"
                         echo "Попытка подключения к: ${mysqlAddress}:3306"
 
                         def dnsStatus = sh(script: "nslookup ${mysqlAddress}", returnStatus: true)
