@@ -106,7 +106,7 @@ pipeline {
                     script {
                         echo "Деплой приложения..."
 
-                        sh 'kubectl set image deployment/crudback-app crudback=ivashka3228/crudback -n default'
+                        sh 'kubectl set image deployment/crudback-app crudback=ivashka3228/crudback100 -n default'
                         sh 'kubectl rollout status deployment/crudback-app -n default --timeout=120s'
 
                         def selector = sh(script: 'kubectl get deployment crudback-app -n default -o jsonpath="{.spec.selector.matchLabels.app}"', returnStdout: true).trim()
