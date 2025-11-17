@@ -45,16 +45,16 @@ pipeline {
                 container('tools') {
                     script {
                         echo "Проверка доступности базы данных..."
-                        def mysqlAddress = "mysql-master.default.svc.cluster.local"
+                        def mysqlAddress = "mysql.default.svc.cluster.local"
                         echo "Попытка подключения к: ${mysqlAddress}:3306"
 
                         def dnsStatus = sh(script: "nslookup ${mysqlAddress}", returnStatus: true)
                         if (dnsStatus != 0) error("DNS ошибка — база недоступна!")
 
-                        def endpointCheck = sh(script: "kubectl get endpoints mysql-master -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null", returnStdout: true).trim()
+                        def endpointCheck = sh(script: "kubectl get endpoints mysql -n default -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null", returnStdout: true).trim()
                         if (endpointCheck == "") error("Нет endpoints — база недоступна!")
 
-                        def podStatus = sh(script: "kubectl get pods -l app=mysql-master -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
+                        def podStatus = sh(script: "kubectl get pods -l app=mysql -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
                         if (podStatus != 'Running') error("Pod базы не Running!")
 
                         def dbStatus = sh(script: "timeout 10 sh -c 'echo > /dev/tcp/${mysqlAddress}/3306' 2>/dev/null", returnStatus: true)
