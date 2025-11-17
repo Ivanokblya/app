@@ -7,7 +7,7 @@ pipeline {
                 spec:
                   containers:
                   - name: tools
-                    image: alpine/k8s:1.27.4
+                    image: bitnami/kubectl:latest
                     command: ['cat']
                     tty: true
                     resources:
@@ -60,8 +60,8 @@ pipeline {
                         def podStatus = sh(script: "kubectl get pods -l app=mysql -n default -o jsonpath='{.items[0].status.phase}' 2>/dev/null", returnStdout: true).trim()
                         if (podStatus != 'Running') error("Pod базы не Running!")
 
-                        // Проверяем доступность порта 3306 по TCP
-                        def dbStatus = sh(script: "timeout 10 sh -c 'echo > /dev/tcp/${dbService}/3306' 2>/dev/null", returnStatus: true)
+                        // Проверяем доступность порта 3306 по TCP через nc
+                        def dbStatus = sh(script: "nc -z -w 10 ${dbService} 3306", returnStatus: true)
                         if (dbStatus != 0) error("База недоступна по TCP!")
 
                         echo "База данных доступна по адресу: ${endpointCheck}:3306"
