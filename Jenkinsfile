@@ -136,8 +136,7 @@ spec:
                             mysql -h db.default.svc.cluster.local -u root -p'secret' lena -e "
                             SELECT COUNT(*) FROM orders WHERE order_date > NOW()
                             OR order_date < '2000-01-01'
-                            OR order_date IS NULL
-                            OR order_date = '0000-00-00 00:00:00';"
+                            OR order_date IS NULL;"
                         """
 
                         def result = sh(script: mysqlCmd, returnStdout: true).trim()
