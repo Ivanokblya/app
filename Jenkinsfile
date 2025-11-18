@@ -166,6 +166,7 @@ spec:
 
         echo "Found pod: $POD"
 
+        # Копируем файл из контейнера
         kubectl exec -n default $POD -- cat /var/www/html/orders.php > orders.php || {
           echo "ERROR: orders.php not found inside pod!"
           exit 1
@@ -173,17 +174,18 @@ spec:
 
         echo "Checking that PHP contains validation: amount < 0 ..."
 
-        # Поиск amount < 0 (учитываем разные пробелы)
-        if grep -Eq 'amount *< *0' orders.php; then
-            echo "Validation FOUND: amount < 0"
+        # Ищем проверку суммы (amount < 0 или amount <= 0)
+        if grep -Eq "amount *< *=? *0" orders.php; then
+            echo " Validation FOUND: amount < 0 (or <= 0)"
         else
-            echo "ERROR: Validation 'amount < 0' NOT FOUND!"
+            echo " ERROR: Validation 'amount < 0' NOT FOUND!"
             exit 1
         fi
       '''
     }
   }
 }
+
 
 
 
