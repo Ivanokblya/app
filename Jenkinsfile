@@ -156,7 +156,7 @@ spec:
   steps {
     container('tools') {
       sh '''
-        POD=$(kubectl get pods -n default -l app=crudapp-backend -o jsonpath="{.items[0].metadata.name}")
+        POD=$(kubectl get pods -n default -l app=crudback-app -o jsonpath="{.items[0].metadata.name}")
 
         echo "Found pod: $POD"
 
