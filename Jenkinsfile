@@ -156,26 +156,35 @@ spec:
   steps {
     container('tools') {
       sh '''
+        echo "Searching for pods with label app=crudback..."
         POD=$(kubectl get pods -n default -l app=crudback -o jsonpath="{.items[0].metadata.name}")
+
+        if [ -z "$POD" ]; then
+          echo "ERROR: No pod found with label app=crudback!"
+          exit 1
+        fi
 
         echo "Found pod: $POD"
 
         kubectl exec -n default $POD -- cat /var/www/html/orders.php > orders.php || {
-          echo "ERROR: orders.php not found in pod!"
+          echo "ERROR: orders.php not found inside pod!"
           exit 1
         }
 
-        echo "Checking validation..."
-        if grep -q "amount" orders.php; then
-          echo "Validation OK"
+        echo "Checking that PHP contains validation: amount < 0 ..."
+
+        # Поиск amount < 0 (учитываем разные пробелы)
+        if grep -Eq 'amount *< *0' orders.php; then
+            echo "Validation FOUND: amount < 0"
         else
-          echo "ERROR: no validation for amount found!"
-          exit 1
+            echo "ERROR: Validation 'amount < 0' NOT FOUND!"
+            exit 1
         fi
       '''
     }
   }
 }
+
 
 
 
