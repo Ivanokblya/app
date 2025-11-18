@@ -158,10 +158,8 @@ spec:
 
             echo "Checking PHP validation inside orders.php..."
             
-            # показать структуру папок
             sh 'pwd && ls -R .'
 
-            # ищем файл
             sh '''
                 if [ ! -f "orders.php" ]; then
                     echo "orders.php not found. Searching..."
@@ -169,7 +167,6 @@ spec:
                 fi
             '''
 
-            # проверка
             sh '''
                 FILE=$(find . -name "orders.php" | head -n 1)
 
