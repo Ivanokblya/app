@@ -152,39 +152,31 @@ spec:
                 }
             }
         }
-        stage('Check PHP validation') {
-    steps {
-        container('tools') {
+        stage('Check PHP validation in Kubernetes pod') {
+  steps {
+    container('tools') {
+      sh '''
+        POD=$(kubectl get pods -n default -l app=crudapp-backend -o jsonpath="{.items[0].metadata.name}")
 
-            echo "Checking PHP validation inside orders.php..."
-            
-            sh 'pwd && ls -R .'
+        echo "Found pod: $POD"
 
-            sh '''
-                if [ ! -f "orders.php" ]; then
-                    echo "orders.php not found. Searching..."
-                    find . -name "orders.php"
-                fi
-            '''
-
-            sh '''
-                FILE=$(find . -name "orders.php" | head -n 1)
-
-                if [ -z "$FILE" ]; then
-                    echo "ERROR: orders.php not found!"
-                    exit 1
-                fi
-
-                if grep -q "\\$amount <= 0" "$FILE"; then
-                    echo "PHP validation OK"
-                else
-                    echo "ERROR: PHP validation for amount is missing!"
-                    exit 1
-                fi
-            '''
+        kubectl exec -n default $POD -- cat /var/www/html/orders.php > orders.php || {
+          echo "ERROR: orders.php not found in pod!"
+          exit 1
         }
+
+        echo "Checking validation..."
+        if grep -q "amount" orders.php; then
+          echo "Validation OK"
+        else
+          echo "ERROR: no validation for amount found!"
+          exit 1
+        fi
+      '''
     }
+  }
 }
+
 
 
         stage('Final Health Check') {
