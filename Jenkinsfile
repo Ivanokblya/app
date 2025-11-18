@@ -152,6 +152,19 @@ spec:
                 }
             }
         }
+        stage('Check PHP validation') {
+    steps {
+        sh '''
+            if grep -q "\\$amount <= 0" orders.php; then
+                echo "PHP validation OK"
+            else
+                echo "ERROR: PHP validation for amount is missing!"
+                exit 1
+            fi
+        '''
+    }
+}
+
 
         stage('Final Health Check') {
             steps {
