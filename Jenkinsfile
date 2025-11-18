@@ -154,14 +154,38 @@ spec:
         }
         stage('Check PHP validation') {
     steps {
-        sh '''
-            if grep -q "\\$amount <= 0" orders.php; then
-                echo "PHP validation OK"
-            else
-                echo "ERROR: PHP validation for amount is missing!"
-                exit 1
-            fi
-        '''
+        container('tools') {
+
+            echo "Checking PHP validation inside orders.php..."
+            
+            # показать структуру папок
+            sh 'pwd && ls -R .'
+
+            # ищем файл
+            sh '''
+                if [ ! -f "orders.php" ]; then
+                    echo "orders.php not found. Searching..."
+                    find . -name "orders.php"
+                fi
+            '''
+
+            # проверка
+            sh '''
+                FILE=$(find . -name "orders.php" | head -n 1)
+
+                if [ -z "$FILE" ]; then
+                    echo "ERROR: orders.php not found!"
+                    exit 1
+                fi
+
+                if grep -q "\\$amount <= 0" "$FILE"; then
+                    echo "PHP validation OK"
+                else
+                    echo "ERROR: PHP validation for amount is missing!"
+                    exit 1
+                fi
+            '''
+        }
     }
 }
 
